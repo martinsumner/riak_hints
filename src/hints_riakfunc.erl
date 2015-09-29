@@ -55,7 +55,21 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+%% TODO: Consider splitting the hints files into multiple objects
+%% If the hints file is split (perhaps into eight separate objects), when
+%% querying for a single fact there will only be an eighth of the data required
+%% to be lift from disk.  Obviously conjunction queries would become harder.
+%%
+%% Ultimtely with a good file-system cache the advantage of a split hints
+%% file may be negated.
+
 %% TODO: Need to switch to using lager for logging
+%% Assume this is easy
+
+%% TODO: Need to experiment with alternative JSON decode
+%% i.e. https://kivikakk.ee/2013/05/20/erlang_is_slow.html
+
+%% PRE_COMMIT_HOOK
 
 %% The precommithook for the event block should
 %% 1. Extract some facts to use as the basis of hints
@@ -67,9 +81,6 @@
 %%
 %% Pre-commit hooks should not be applied to tombstones (so deleted objects
 %% are filtered at the top)
-
-%% TODO: Need to experiment with alternative JSON decode
-%% i.e. https://kivikakk.ee/2013/05/20/erlang_is_slow.html
 
 precommit_eventblock(Object) ->
   JsonFile = riak_object:get_value(Object),
@@ -138,6 +149,8 @@ load_hints(RplHintsObject) ->
   C:put(RplHintsObject).
 
 
+%% MAP FUNCTION
+%%
 %% Map module to check a hints file
 %% Should take a fact (or multiple facts) and output a list of
 %% {Fact, key} tuples
