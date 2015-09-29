@@ -17,8 +17,22 @@
 %%%-------------------------------------------------------------------
 %%% @doc
 %%%
-%%% Pre-commit hooks and map functions required for the objections audit
-%%% service
+%%% Pre-commit hooks and map functions required to use the hints solution
+%%%
+%%% The pre-commit hook is the function precommit_eventblock/1
+%%%
+%%% The pre-commit hook will depend on a project-specific function which can
+%%% take the decoded Object value and the Object Key and return -
+%%% {ok, Facts, NewIndexes} or {error, Reason}
+%%% Facts should be a list of facts to be queryable via the hints file;
+%%% NewIndexes should be a list of {index_field, index_term} tuples to be added
+%%% to both the original object and the hints object
+%%%
+%%% The map function is map_checkhints/3
+%%%
+%%% The map will return a list of {Fact, Key} tuples indicating in which keys
+%%% each fact can be found
+%%%
 %%%
 %%% @end
 %%% Created : 23. Sep 2015 15:05
@@ -27,7 +41,6 @@
 -author("martin").
 
 -define(HINTS_BUCKET, "hints").
--define(FILE_VERSION, 1).
 -define(INFO, "INFO").
 -define(WARN, "WARN").
 -define(ERROR, "ERROR").
@@ -54,6 +67,9 @@
 %%
 %% Pre-commit hooks should not be applied to tombstones (so deleted objects
 %% are filtered at the top)
+
+%% TODO: Need to experiment with alternative JSON decode
+%% i.e. https://kivikakk.ee/2013/05/20/erlang_is_slow.html
 
 precommit_eventblock(Object) ->
   JsonFile = riak_object:get_value(Object),
@@ -123,12 +139,13 @@ load_hints(RplHintsObject) ->
 
 
 %% Map module to check a hints file
-%% Should take a nhsnumber (or multiple numbers) and output a list of
-%% {nhsNumber, key} tuples
+%% Should take a fact (or multiple facts) and output a list of
+%% {Fact, key} tuples
 %%
 
 %% TODO: Handle siblings
 %% TODO: Handle notfound
+%% TODO: Support more complicated queries (i.e. conjunction of Facts)
 
 map_checkhints(HintsValue, _KeyData, Facts) ->
   HintsBin = riak_object:get_value(HintsValue),
