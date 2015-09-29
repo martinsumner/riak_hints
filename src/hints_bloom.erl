@@ -93,7 +93,8 @@
 -export([create_bloom/1,
   check_key/2,
   check_allkeys/2,
-  confirm_fpr/2]).
+  confirm_fpr/2,
+  key_generator/1]).
 
 -import(mochijson2, [encode/1]).
 
@@ -338,15 +339,24 @@ corrupt_bloom(Bloom) ->
   end.
 
 key_generator(Counter) ->
+  key_generator(Counter, false).
+
+key_generator(Counter, UseBigKey) ->
   Characters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L",
     "1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
-  key_generator(Counter, [], Characters).
+  key_generator(Counter, [], Characters, UseBigKey).
 
-key_generator(0, KeyList, _) ->
+key_generator(0, KeyList, _, _) ->
   KeyList;
-key_generator(Counter, KeyList, Characters) ->
-  NewKey = build_randomstring(8, Characters, ""),
-  key_generator(Counter - 1, [NewKey|KeyList], Characters).
+key_generator(Counter, KeyList, Characters, UseBigKey) ->
+  case UseBigKey of
+    true ->
+      NewKey = {list_to_binary(build_randomstring(8, Characters, "")),
+        list_to_binary(build_randomstring(64, Characters, ""))};
+    _ ->
+      NewKey = list_to_binary(build_randomstring(8, Characters, ""))
+  end,
+  key_generator(Counter - 1, [NewKey|KeyList], Characters, UseBigKey).
 
 build_randomstring(0, _, Acc) ->
   Acc;
@@ -384,8 +394,14 @@ bigbloom_test() ->
   lists:foreach(fun(Key) -> ?assertMatch(true, check_key(Key, Bloom)) end,
     KeyList).
 
-notsobigbloom_test() ->
+notsobigbloom1_test() ->
   KeyList = key_generator(1000),
+  Bloom = create_bloom(KeyList),
+  lists:foreach(fun(Key) -> ?assertMatch(true, check_key(Key, Bloom)) end,
+    KeyList).
+
+notsobigbloom2_test() ->
+  KeyList = key_generator(1000, true),
   Bloom = create_bloom(KeyList),
   lists:foreach(fun(Key) -> ?assertMatch(true, check_key(Key, Bloom)) end,
     KeyList).
