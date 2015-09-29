@@ -94,7 +94,7 @@
   check_key/2,
   check_allkeys/2,
   confirm_fpr/2,
-  key_generator/1]).
+  key_generator/2]).
 
 -import(mochijson2, [encode/1]).
 
