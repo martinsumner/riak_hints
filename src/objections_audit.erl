@@ -17,17 +17,19 @@
 %%%-------------------------------------------------------------------
 %%% @doc
 %%%
-%%% Pre-commit hooks and map functions required for the objections audit
-%%% service
+%%% Specific functions required for processing in the Patient Objections
+%%% Audit service
 %%%
 %%% @end
 %%% Created : 23. Sep 2015 15:05
 %%%-------------------------------------------------------------------
--module(poa_riakfunc).
+
+
+-module(objections_audit).
 -author("martin").
 
 -define(HINTS_BUCKET, "hints").
--define(JOB_INDEX, "jobid").
+-define(JOB_INDEX, "jobid_bin").
 -define(FILE_VERSION, 1).
 -define(INFO, "INFO").
 -define(WARN, "WARN").
@@ -35,102 +37,12 @@
 -define(VALID_OBJECTION_EVENTS, [<<"ObjectionNotFoundEvent">>,
   <<"ObjectionFoundEvent">>, <<"ObjectionExemptEvent">>]).
 -define(EVENT_ERROR_THRESHOLD, 10).
--define(MD_DELETE, <<"X-Riak-Deleted">>).
 %% API
--export([precommit_eventblock/1, map_checkhints/3]).
+-export([extract_data_forprocess/2]).
 
 -import(mochijson2, [decode/1]).
 
 -include_lib("eunit/include/eunit.hrl").
-
-%% The precommithook for the event block should
-%% 1. Extract some facts to use as the basis of hints
-%% 2. Extract some new metadata to set any indexes
-%% 3. Create the new HintsObject, and modify the metadata of this and the
-%% original object
-%% 4. Load a hints object into Riak
-%% 5. Return the original Object (now updated)
-%%
-%% Pre-commit hooks should not be applied to tombstones (so deleted objects
-%% are filtered at the top)
-
-precommit_eventblock(Object) ->
-  JsonFile = riak_object:get_value(Object),
-  ObjectKey = riak_object:key(Object),
-  Metadata = riak_object:get_metadata(Object),
-  case dict:find(?MD_DELETE, Metadata) of
-    {ok, "true"} ->
-      writelog("Deletion detected by hook for key=~w~n", [ObjectKey], ?INFO),
-      Object;
-    _ ->
-      Result = decode_object(JsonFile),
-      case Result of
-        {ok, {struct, DecodedObj}} ->
-          Data = extract_data_forprocess(DecodedObj, ObjectKey),
-          case Data of
-            {ok, Facts, NewMetadata} ->
-              HintsObject = generate_hintsobject(Facts, ObjectKey),
-              {RplObject, RplHintsObject} = set_indexes(Object, HintsObject,
-                NewMetadata, Metadata),
-              load_hints(RplHintsObject),
-              RplObject;
-            {error, Reason} ->
-              {fail, "Invalid File: Unable to extract data to process" ++ Reason}
-          end;
-        {error, Reason} ->
-          {fail, Reason}
-      end
-  end.
-
-
-decode_object(JsonFile) ->
-  try
-    {ok, mochijson2:decode(JsonFile)}
-  catch
-    throw:invalid_utf8 ->
-      {error, "Invalid JSON: Illegal UTF-8 character"};
-    error:_ ->
-      {error, "Invalid JSON"}
-  end.
-
-generate_hintsobject(Facts, ObjectKey) ->
-  HintsObj = poa_hints:create_bloom(Facts),
-  ObjectBucket = list_to_binary(?HINTS_BUCKET),
-  RiakHintsObj = riak_object:new(ObjectBucket, ObjectKey, HintsObj),
-  RiakHintsObj.
-
-%% TODO: Actually set the indexes
-set_indexes(Object, HintsObject, _NewMetadata, _Metadata) ->
-  {Object, HintsObject}.
-
-load_hints(RplHintsObject) ->
-  {ok, C} = riak:local_client(),
-  %% Store the object
-  C:put(RplHintsObject).
-
-
-%% Map module to check a hints file
-%% Should take a nhsnumber (or multiple numbers) and output a list of
-%% {nhsNumber, key} tuples
-%%
-
-%% TODO: Handle siblings
-%% TODO: Handle notfound
-
-map_checkhints(HintsValue, _KeyData, Facts) ->
-  HintsBin = riak_object:get_value(HintsValue),
-  ObjectKey = riak_object:key(HintsValue),
-  checkhints(HintsBin, Facts, [], ObjectKey).
-
-checkhints(_HintsBin, [], Results, _ObjectKey) ->
-  Results;
-checkhints(HintsBin, [Fact|Tail], Results, ObjectKey) ->
-  case poa_hints:check_key(Fact, HintsBin) of
-    true ->
-      checkhints(HintsBin, Tail,[{Fact, ObjectKey}|Results], ObjectKey);
-    _ ->
-      checkhints(HintsBin, Tail, Results, ObjectKey)
-  end.
 
 
 %% extract_data_forprocess should return either {ok, Facts, NewMetadata} or
@@ -198,7 +110,7 @@ ebfextract_jobid(EventBlockFile, _ObjectKey, _Version) ->
         undefined ->
           {error, "Missing JobID"};
         _ ->
-        {ok, JobID}
+          {ok, JobID}
       end
   end.
 
@@ -243,7 +155,7 @@ extract_identities([{struct, HeadBlock}|Tail], ObjectKey, _Version, IDList) ->
             lists:append(IDList, StrippedIDList));
         _ ->
           writelog("Invalid Usertype=~w or EventType=~w~n",
-          [UserType, EventType], ?WARN),
+            [UserType, EventType], ?WARN),
           {error, "Invalid IdentifiedUsedType or EventType"}
       end
   end.

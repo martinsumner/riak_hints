@@ -88,7 +88,7 @@
 
 %% TODO: Write spec entries
 
--module(poa_hints).
+-module(hints_bloom).
 
 -export([create_bloom/1,
   check_key/2,
