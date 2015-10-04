@@ -156,14 +156,29 @@ load_hints(RplHintsObject) ->
 %% {Fact, key} tuples
 %%
 
-%% TODO: Handle siblings
-%% TODO: Handle notfound
 %% TODO: Support more complicated queries (i.e. conjunction of Facts)
 
-map_checkhints(HintsValue, _KeyData, Facts) ->
-  HintsBin = riak_object:get_value(HintsValue),
-  ObjectKey = riak_object:key(HintsValue),
-  checkhints(HintsBin, Facts, [], ObjectKey).
+map_checkhints({error, notfound}, KeyData, Facts) ->
+  %% If not found assume the fact is present, send a potentially false positive
+  %% To achieve this the Key needs to be passed from the query as KeyData as
+  %% well as Key.  Otherwise a false positive is not returned
+  case KeyData of
+    undefined ->
+      [];
+    _ ->
+      lists:foldl(fun(Fact, Output) -> [{Fact, KeyData}|Output] end, [], Facts)
+  end;
+map_checkhints(Hints, _KeyData, Facts) ->
+  ObjectKey = riak_object:key(Hints),
+  HintsBins = riak_object:get_values(Hints),
+  checkallhints(HintsBins, Facts, [], ObjectKey).
+
+checkallhints([], _Facts, Results, _ObjectKey) ->
+  lists:usort(Results);
+checkallhints([HintsBin|Tail], Facts, Results, ObjectKey) ->
+  checkallhints(Tail, Facts,
+    lists:append(Results, checkhints(HintsBin, Facts, Results, ObjectKey)),
+  ObjectKey).
 
 checkhints(_HintsBin, [], Results, _ObjectKey) ->
   Results;
