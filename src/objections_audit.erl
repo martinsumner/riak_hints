@@ -93,7 +93,7 @@ ebfextract_version(EventBlockFile, ObjectKey) ->
     1 ->
       {ok, Version};
     _ ->
-      writelog("Unexpected version ~w for Event Block File with Key ~w~n",
+      hints_utility:writelog("Unexpected version ~w for Event Block File with Key ~w~n",
         [Version, ObjectKey], ?WARN),
       {error, "Bad version"}
   end.
@@ -120,7 +120,7 @@ ebfextract_eventblocks(EventBlockFile, ObjectKey, _Version) ->
     [{struct, HeadBlock}|_] when is_list(HeadBlock) ->
       {ok, EventBlocks};
     _ ->
-      writelog("Unexpected format of Event Block File with Key ~w~n ",
+      hints_utility:writelog("Unexpected format of Event Block File with Key ~w~n ",
         [ObjectKey], ?WARN),
       {error, "Bad Event Block"}
   end.
@@ -137,11 +137,11 @@ extract_identities([{struct, HeadBlock}|Tail], ObjectKey, _Version, IDList) ->
   EventType  = proplists:get_value(<<"EventType">>, HeadBlock),
   case {UserType, EventType} of
     {undefined, _} ->
-      writelog("Missing UserType in Event Block Metadata for File with Key ~w~n",
+      hints_utility:writelog("Missing UserType in Event Block Metadata for File with Key ~w~n",
         [ObjectKey], ?WARN),
       {error, "Missing IdentifiedUsedType"};
     {_, undefined} ->
-      writelog("Missing EventType in Event Block Metadata for File with Key ~w~n",
+      hints_utility:writelog("Missing EventType in Event Block Metadata for File with Key ~w~n",
         [ObjectKey], ?WARN),
       {error, "Missing EventType"};
     {<<"NHSNumber">>, <<"ObjectionNotFoundEvent">>} ->
@@ -154,7 +154,7 @@ extract_identities([{struct, HeadBlock}|Tail], ObjectKey, _Version, IDList) ->
           extract_identities(Tail, ObjectKey, _Version,
             lists:append(IDList, StrippedIDList));
         _ ->
-          writelog("Invalid Usertype=~w or EventType=~w~n",
+          hints_utility:writelog("Invalid Usertype=~w or EventType=~w~n",
             [UserType, EventType], ?WARN),
           {error, "Invalid IdentifiedUsedType or EventType"}
       end
@@ -175,15 +175,15 @@ strip_identities([], ObjectKey, StrippedIDList, ErrorCount) ->
     0 ->
       {ok, StrippedIDList};
     _ when ErrorCount div length(StrippedIDList) > ?EVENT_ERROR_THRESHOLD ->
-      writelog("Error count on strippping exceeds threshold Key=~w~n",
+      hints_utility:writelog("Error count on strippping exceeds threshold Key=~w~n",
         [ObjectKey], ?ERROR),
-      writelog("ErrorCount=~w and SuccessCount=~w~n",
+      hints_utility:writelog("ErrorCount=~w and SuccessCount=~w~n",
         [ErrorCount, length(StrippedIDList)], ?INFO),
       {error, "Too many invalid NHSNumbers"};
     _ ->
-      writelog("Error count nonzero on stripping but below threshold Key=~w~n",
+      hints_utility:writelog("Error count nonzero on stripping but below threshold Key=~w~n",
         [ObjectKey], ?WARN),
-      writelog("ErrorCount=~w and SuccessCount=~w~n",
+      hints_utility:writelog("ErrorCount=~w and SuccessCount=~w~n",
         [ErrorCount, length(StrippedIDList)], ?INFO),
       {ok, StrippedIDList}
   end;
@@ -192,7 +192,7 @@ strip_identities([IDString|Tail], ObjectKey, StrippedIDList, ErrorCount) ->
     {ok, NHSNumber} ->
       strip_identities(Tail, ObjectKey, [NHSNumber|StrippedIDList], ErrorCount);
     {error, Reason} ->
-      writelog("Identity rejected due to reason ~w~n", [Reason], ?INFO),
+      hints_utility:writelog("Identity rejected due to reason ~w~n", [Reason], ?INFO),
       strip_identities(Tail, ObjectKey, StrippedIDList, ErrorCount + 1)
   end.
 
@@ -235,11 +235,6 @@ validate_nhsnumber(Digits, Acc, Mult) ->
   {Int, []} = string:to_integer(string:substr(Digits, 1, 1)),
   validate_nhsnumber(string:sub_string(Digits, 2), Acc + Int * Mult, Mult - 1).
 
-
-%% Helper function to make it easier to switch to lager as context changes
-
-writelog(Text, Inputs, ErrorLevel) ->
-  io:format(ErrorLevel ++ ": " ++ Text, Inputs).
 
 %%%%%%%%%%%%%%%%
 % T E S T

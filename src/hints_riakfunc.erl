@@ -63,9 +63,6 @@
 %% Ultimtely with a good file-system cache the advantage of a split hints
 %% file may be negated.
 
-%% TODO: Need to switch to using lager for logging
-%% Assume this is easy
-
 %% TODO: Need to experiment with alternative JSON decode
 %% i.e. https://kivikakk.ee/2013/05/20/erlang_is_slow.html
 
@@ -86,9 +83,12 @@ precommit_eventblock(Object) ->
   JsonFile = riak_object:get_value(Object),
   ObjectKey = riak_object:key(Object),
   Metadata = riak_object:get_metadata(Object),
+  hints_utility:writelog("Applying pre-commit hook to object with Key=~s~n",
+    [binary_to_list(ObjectKey)], ?INFO),
   case dict:find(?MD_DELETE, Metadata) of
     {ok, "true"} ->
-      writelog("Deletion detected by hook for key=~w~n", [ObjectKey], ?INFO),
+      hints_utility:writelog("Deletion detected by hook for key=~w~n",
+        [ObjectKey], ?INFO),
       Object;
     _ ->
       Result = decode_object(JsonFile),
@@ -100,9 +100,13 @@ precommit_eventblock(Object) ->
               HintsObject = generate_hintsobject(Facts, ObjectKey, NewIndexes),
               RplObject = set_indexes(Object, NewIndexes),
               load_hints(HintsObject),
+              hints_utility:writelog("Pre-commit hook complete for object"
+              ++ " with Key=~s~n",
+                [binary_to_list(ObjectKey)], ?INFO),
               RplObject;
             {error, Reason} ->
-              {fail, "Invalid File: Unable to extract data to process" ++ Reason}
+              {fail, "Invalid File: Unable to extract data to process"
+                ++ Reason}
           end;
         {error, Reason} ->
           {fail, Reason}
@@ -162,6 +166,8 @@ map_checkhints({error, notfound}, KeyData, Facts) ->
   %% If not found assume the fact is present, send a potentially false positive
   %% To achieve this the Key needs to be passed from the query as KeyData as
   %% well as Key.  Otherwise a false positive is not returned
+  hints_utility:writelog("Object not found and KeyData=~w~n",
+    [KeyData], ?WARN),
   case KeyData of
     undefined ->
       [];
@@ -170,6 +176,8 @@ map_checkhints({error, notfound}, KeyData, Facts) ->
   end;
 map_checkhints(Hints, _KeyData, Facts) ->
   ObjectKey = riak_object:key(Hints),
+  hints_utility:maybelog("Check hints map job is processing Key=~s~n",
+    [binary_to_list(ObjectKey)], ?INFO),
   HintsBins = riak_object:get_values(Hints),
   checkallhints(HintsBins, Facts, [], ObjectKey).
 
@@ -190,8 +198,3 @@ checkhints(HintsBin, [Fact|Tail], Results, ObjectKey) ->
       checkhints(HintsBin, Tail, Results, ObjectKey)
   end.
 
-
-%% Helper function to make it easier to switch to lager as context changes
-
-writelog(Text, Inputs, ErrorLevel) ->
-  io:format(ErrorLevel ++ ": " ++ Text, Inputs).

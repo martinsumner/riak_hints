@@ -105,6 +105,9 @@
 % False positive rate is always better than the inverse of the Divisor
 % The DIVISOR cannot exceed 2 ^ 16 (due to format of binary)
 -define(DEFAULT_FORMAT, binary_format).
+-define(INFO, "INFO").
+-define(WARN, "WARN").
+-define(ERROR, "ERROR").
 
 %% Create a bitstring representing the bloom filter from a key list
 
@@ -177,7 +180,8 @@ check_key(Key, BitStr, SlotCount, Factor, Divisor) ->
     <<_:StartPos/bitstring, Bloom:Length/bitstring, _/bitstring>> ->
       check_hash(Hash, Bloom, Factor, Divisor, 0, TopHash);
     _ ->
-      io:format("Possible corruption of bloom index ~n"),
+      hints_utility:writelog("Possible corruption of bloom index ~n",
+        [], ?WARN),
       true
   end.
 
@@ -198,7 +202,8 @@ check_hash(_, <<>>, _, _, Acc, MaxHash) ->
     MaxHash ->
       false;
     _ ->
-      io:format("Failure of CRC check on bloom filter~n"),
+      hints_utility:writelog("Failure of CRC check on bloom filter~n",
+        [], ?WARN),
       true
   end;
 check_hash(HashToCheck, BitStr, Factor, Divisor, Acc, TopHash) ->
@@ -215,11 +220,13 @@ check_hash(HashToCheck, BitStr, Factor, Divisor, Acc, TopHash) ->
                 Divisor, NextHash, TopHash)
           end;
         error ->
-          io:format("Failure of CRC check on bloom filter~n"),
+          hints_utility:writelog("Failure of CRC check on bloom filter~n",
+            [], ?WARN),
           true
       end;
     error ->
-      io:format("Failure of CRC check on bloom filter~n"),
+      hints_utility:writelog("Failure of CRC check on bloom filter~n",
+        [], ?WARN),
       true
   end.
 
