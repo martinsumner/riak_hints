@@ -30,6 +30,8 @@
 
 -define(HINTS_BUCKET, "hints").
 -define(JOB_INDEX, "jobid_bin").
+-define(SYSTEM_INDEX, "systemid_bin").
+-define(TIMESTAMP_INDEX, "ts_int").
 -define(FILE_VERSION, 1).
 -define(INFO, "INFO").
 -define(WARN, "WARN").
@@ -53,21 +55,19 @@ extract_data_forprocess(DecodedObj, ObjectKey) ->
   case Ver of
     {ok, Version} ->
       JID = ebfextract_jobid(DecodedObj, ObjectKey, Version),
-      case JID of
-        {ok, JobID} ->
-          EBs = ebfextract_eventblocks(DecodedObj, ObjectKey, Version),
-          case EBs of
-            {ok, EventBlocks} ->
-              IDs = extract_identities(EventBlocks, ObjectKey, Version),
-              case IDs of
-                {ok, Facts} ->
-                  {ok, Facts, [{?JOB_INDEX, JobID}]};
-                Error ->
-                  Error
-              end;
-            Error ->
-              Error
-          end;
+      SID = ebfextract_systemid(DecodedObj, ObjectKey, Version),
+      EBs = ebfextract_eventblocks(DecodedObj, ObjectKey, Version),
+      TS = ebfextract_ts(DecodedObj, ObjectKey, Version),
+      case {JID, SID, EBs, TS} of
+        {{ok, JobID}, {ok, SysID}, {ok, EventBlocks}, {ok, TimeStamp}} ->
+            IDs = extract_identities(EventBlocks, ObjectKey, Version),
+            case IDs of
+              {ok, Facts} ->
+                {ok, Facts, [{?JOB_INDEX, JobID},
+                  {?SYSTEM_INDEX, SysID}, {?TIMESTAMP_INDEX, TimeStamp}]};
+              Error ->
+                Error
+            end;
         Error ->
           Error
       end;
@@ -98,21 +98,14 @@ ebfextract_version(EventBlockFile, ObjectKey) ->
       {error, "Bad version"}
   end.
 
-ebfextract_jobid(EventBlockFile, _ObjectKey, _Version) ->
-  JobProcessingElement = proplists:get_value(<<"JobProcessingMD">>,
-    EventBlockFile),
-  case JobProcessingElement of
-    undefined ->
-      {error, "Missing Job Processing Element"};
-    {struct, JobProcessingMD}->
-      JobID = proplists:get_value(<<"GlobalJobId">>, JobProcessingMD),
-      case JobID of
-        undefined ->
-          {error, "Missing JobID"};
-        _ ->
-          {ok, JobID}
-      end
-  end.
+ebfextract_jobid(EventBlockFile, ObjectKey, Version) ->
+  ebfextract_jobmd(EventBlockFile, ObjectKey, Version, <<"GlobalJobId">>).
+
+ebfextract_systemid(EventBlockFile, ObjectKey, Version) ->
+  ebfextract_jobmd(EventBlockFile, ObjectKey, Version, <<"GlobalSystemId">>).
+
+ebfextract_ts(EventBlockFile, ObjectKey, Version) ->
+  ebfextract_jobmd(EventBlockFile, ObjectKey, Version, <<"Timestamp">>).
 
 ebfextract_eventblocks(EventBlockFile, ObjectKey, _Version) ->
   EventBlocks = proplists:get_value(<<"EventBlocks">>, EventBlockFile),
@@ -123,6 +116,22 @@ ebfextract_eventblocks(EventBlockFile, ObjectKey, _Version) ->
       hints_utility:writelog("Unexpected format of Event Block File with Key ~w~n ",
         [ObjectKey], ?WARN),
       {error, "Bad Event Block"}
+  end.
+
+ebfextract_jobmd(EventBlockFile, _ObjectKey, _Version, MDElementName) ->
+  JobProcessingElement = proplists:get_value(<<"JobProcessingMD">>,
+    EventBlockFile),
+  case JobProcessingElement of
+    undefined ->
+      {error, "Missing Job Processing Element"};
+    {struct, JobProcessingMD}->
+      MDElement = proplists:get_value(MDElementName, JobProcessingMD),
+      case MDElement of
+        undefined ->
+          {error, "Missing ~s", [binary_to_list(MDElementName)]};
+        _ ->
+          {ok, MDElement}
+      end
   end.
 
 
@@ -249,6 +258,10 @@ valid_extract_test() ->
     ebfextract_version(EventBlockFile, "TestKey")),
   ?assertMatch({ok, <<"e7415570-2b6f-4bca-a46b-12f293e69040">>},
     ebfextract_jobid(EventBlockFile, "TestKey", 1)),
+  ?assertMatch({ok, <<"TestSystem">>},
+    ebfextract_systemid(EventBlockFile, "TestKey", 1)),
+  ?assertMatch({ok, 1442491262},
+    ebfextract_ts(EventBlockFile, "TestKey", 1)),
   ?assertMatch({ok, _},
     ebfextract_eventblocks(EventBlockFile, "TestKey", 1)).
 
@@ -300,7 +313,8 @@ full_extract_data_test() ->
   {struct, EventBlockFile} = mochijson2:decode(EBFFile),
   {ok, Facts, Index} = extract_data_forprocess(EventBlockFile, 'TestKey'),
   ?assertMatch(true, lists:member(<<"5016275971">>, Facts)),
-  ?assertMatch([{?JOB_INDEX, <<"e7415570-2b6f-4bca-a46b-12f293e69040">>}], Index).
+  ?assertMatch([{?JOB_INDEX, <<"e7415570-2b6f-4bca-a46b-12f293e69040">>},
+    {?SYSTEM_INDEX, <<"TestSystem">>}, {?TIMESTAMP_INDEX, 1442491262}], Index).
 
 full_extract_invalidblock_test() ->
   {ok, EBFFile} = file:read_file("../test/invalidEBF1.json"),
